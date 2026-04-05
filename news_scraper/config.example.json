@@ -1,0 +1,27 @@
+{
+  "telegram_token": "BOT_TOKEN",
+  "telegram_channel": "@your_channel",
+  "max_items_per_feed": 10,
+  "max_post_age_hours": 1,
+  "state_file": "state.json",
+  "log_file": "news_bot.log",
+  "feeds": [
+    {
+      "name": "TechCrunch",
+      "url": "https://techcrunch.com/feed/"
+    },
+    {
+      "name": "Ars Technica",
+      "url": "https://feeds.arstechnica.com/arstechnica/index"
+    },
+    {
+      "name": "The Verge",
+      "url": "https://www.theverge.com/rss/index.xml"
+    },
+    {
+      "name": "Hacker News",
+      "url": "https://hnrss.org/frontpage?points=100"
+    }
+  ],
+  "exclude_pattern": "football|soccer|rugby|cricket|recipe|horoscope"
+}
