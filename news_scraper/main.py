@@ -12,7 +12,29 @@ from html import unescape
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional
 
-USER_AGENT = "Mozilla/5.0 (compatible; NewsBot/1.0)"
+def log(message: str, log_file: Optional[str] = None) -> None:
+    line = f"[{datetime.now(timezone.utc).isoformat()}] {message}"
+    print(line)
+    if log_file:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+def get_latest_chrome_user_agent() -> str:
+    default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.57 Safari/537.36"
+    try:
+        req = urllib.request.Request(
+            "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json",
+            headers={"User-Agent": default_ua}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            version = data["channels"]["Stable"]["version"]
+            return f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36"
+    except Exception:
+        log("Failed to fetch the latest version of Chrome for User-Agent, fallback to defaults", "news.log")
+        return default_ua
+
+USER_AGENT = get_latest_chrome_user_agent()
 
 def load_json(path: str, default: Any) -> Any:
     if not os.path.exists(path):
@@ -250,12 +272,6 @@ def is_near_duplicate(
     return False
 
 
-def log(message: str, log_file: Optional[str] = None) -> None:
-    line = f"[{datetime.now(timezone.utc).isoformat()}] {message}"
-    print(line)
-    if log_file:
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
 
 
 def main() -> int:
