@@ -272,8 +272,8 @@ def main() -> int:
     channel = config.get("telegram_channel", "").strip()
     feeds = config.get("feeds", [])
     max_items = int(config.get("max_items_per_feed", 10))
-    max_age_hours = int(config.get("max_post_age_hours", 123123))
-    exclude_pattern = config.get("exclude_pattern", "")
+    # max_age_hours = int(config.get("max_post_age_hours", 123123))
+    # exclude_pattern = config.get("exclude_pattern", "")
     state_path = os.path.join(base_dir, config.get("state_file", "state.json"))
     log_file = os.path.join(base_dir, config.get("log_file", "news.log"))
 
@@ -281,7 +281,7 @@ def main() -> int:
         print("config.json is missing telegram_token, telegram_channel, or feeds")
         return 1
 
-    exclude_re = re.compile(exclude_pattern, re.IGNORECASE) if exclude_pattern else None
+    # exclude_re = re.compile(exclude_pattern, re.IGNORECASE) if exclude_pattern else None
     state = load_json(state_path, {"posted": {}})
     posted = state.get("posted", {})
 
@@ -299,7 +299,7 @@ def main() -> int:
             log(f"failed loading {name}: {e}", log_file)
 
     new_stories: List[Dict[str, str]] = []
-    seen_titles: List[str] = [v.get("title", "") for v in posted.values()]
+    # seen_titles: List[str] = [v.get("title", "") for v in posted.values()]
 
     for story in all_stories:
         title = story["title"]
