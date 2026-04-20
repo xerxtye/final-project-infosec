@@ -22,11 +22,11 @@ def log(message: str, log_file: Optional[str] = None) -> None:
 def get_latest_chrome_user_agent() -> str:
     default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.57 Safari/537.36"
     try:
-        req = urllib.request.Request(
+        request = urllib.request.Request(
             "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json",
             headers={"User-Agent": default_ua}
         )
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with urllib.request.urlopen(request, timeout=5) as response:
             data = json.loads(response.read().decode("utf-8"))
             version = data["channels"]["Stable"]["version"]
             return f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36"
