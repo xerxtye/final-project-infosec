@@ -2,7 +2,7 @@
   "telegram_token": "BOT_TOKEN",
   "telegram_channel": "@your_channel",
   "max_items_per_feed": 10,
-  "max_post_age_hours": 1,
+  "max_post_age_hours": 72,
   "state_file": "state.json",
   "log_file": "news_bot.log",
   "feeds": [
