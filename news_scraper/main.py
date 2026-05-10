@@ -2,7 +2,9 @@
 import hashlib
 import json
 import os
+import ipaddress
 import re
+import socket
 import time
 import urllib.request
 import xml.etree.ElementTree as XmlElementTree
@@ -10,7 +12,9 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 def log(message: str, log_file: Optional[str] = None) -> None:
     line = f"[{datetime.now(timezone.utc).isoformat()}] {message}"
@@ -19,22 +23,7 @@ def log(message: str, log_file: Optional[str] = None) -> None:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(line + "\n")
 
-def get_latest_chrome_user_agent() -> str:
-    default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.57 Safari/537.36"
-    try:
-        request = urllib.request.Request(
-            "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json",
-            headers={"User-Agent": default_ua}
-        )
-        with urllib.request.urlopen(request, timeout=5) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            version = data["channels"]["Stable"]["version"]
-            return f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{version} Safari/537.36"
-    except Exception:
-        log("Failed to fetch the latest version of Chrome for User-Agent, fallback to defaults", "news.log")
-        return default_ua
-
-USER_AGENT = get_latest_chrome_user_agent()
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.57 Safari/537.36"
 
 def load_json(path: str, default: Any) -> Any:
     if not os.path.exists(path):
@@ -48,10 +37,99 @@ def save_json(path: str, data: Any) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def fetch_url(url: str, timeout: int = 12) -> bytes:
+def load_env_file(path: str) -> None:
+    if not os.path.exists(path):
+        return
+
+    with open(path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+def safe_join(base_dir: str, relative_path: str, default_name: str) -> str:
+    base = Path(base_dir).resolve()
+    candidate = (base / (relative_path or default_name)).resolve()
+    if candidate != base and base not in candidate.parents:
+        raise ValueError(f"unsafe path outside base directory: {relative_path}")
+    return str(candidate)
+
+
+def is_public_ip(host: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def is_safe_http_url(url: str) -> bool:
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return False
+
+    if parts.scheme not in ("http", "https"):
+        return False
+    if parts.username or parts.password:
+        return False
+
+    host = (parts.hostname or "").strip().lower()
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return False
+
+    if is_public_ip(host.strip("[]")):
+        return True
+
+    try:
+        addresses = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False
+
+    seen: set[str] = set()
+    for info in addresses:
+        address = str(info[4][0])
+        if address in seen:
+            continue
+        seen.add(address)
+        if not is_public_ip(address):
+            return False
+
+    return True
+
+
+class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_safe_http_url(newurl):
+            raise ValueError(f"blocked redirect to unsafe url: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+SAFE_URL_OPENER = urllib.request.build_opener(SafeRedirectHandler())
+
+
+def fetch_url(url: str, timeout: int = 12, max_bytes: Optional[int] = None) -> bytes:
+    if not is_safe_http_url(url):
+        raise ValueError(f"unsafe url blocked: {url}")
+
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read()
+    with SAFE_URL_OPENER.open(req, timeout=timeout) as resp:
+        return resp.read(max_bytes) if max_bytes is not None else resp.read()
 
 
 class HTMLTextExtractor(HTMLParser):
@@ -73,7 +151,7 @@ def strip_html(text: str) -> str:
 
 def fetch_rss(url: str, max_items: int = 10) -> List[Dict[str, str]]:
     stories: List[Dict[str, str]] = []
-    raw = fetch_url(url)
+    raw = fetch_url(url, max_bytes=1_000_000)
     root = XmlElementTree.fromstring(raw)
 
     def add_story(title: str, link: str, desc: str, pub: str) -> None:
@@ -171,10 +249,14 @@ class OpenGraphParser(HTMLParser):
 
 def extract_og_image(url: str) -> Optional[str]:
     try:
-        html = fetch_url(url, timeout=8)[:120000].decode("utf-8", errors="ignore")
+        html = fetch_url(url, timeout=8, max_bytes=120000).decode(
+            "utf-8", errors="ignore"
+        )
         parser = OpenGraphParser()
         parser.feed(html)
-        return parser.image_url
+        if parser.image_url and is_safe_http_url(parser.image_url):
+            return parser.image_url
+        return None
     except Exception:
         return None
 
@@ -207,7 +289,7 @@ def telegram_request(
         data=data,
         headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
+    with SAFE_URL_OPENER.open(req, timeout=20) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -276,6 +358,8 @@ def is_near_duplicate(
 
 def main() -> int:
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    load_env_file(os.path.join(base_dir, ".env"))
+
     config_path = os.path.join(base_dir, "config.json")
     if not os.path.exists(config_path):
         print(
@@ -284,17 +368,17 @@ def main() -> int:
         return 1
 
     config = load_json(config_path, {})
-    token = config.get("telegram_token", "").strip()
-    channel = config.get("telegram_channel", "").strip()
+    token = os.environ.get("TELEGRAM_TOKEN", "").strip()
+    channel = os.environ.get("TELEGRAM_CHANNEL", "").strip()
     feeds = config.get("feeds", [])
     max_items = int(config.get("max_items_per_feed", 10))
     max_age_hours = int(config.get("max_post_age_hours", 200))
     exclude_pattern = config.get("exclude_pattern", "")
-    state_path = os.path.join(base_dir, config.get("state_file", "state.json"))
-    log_file = os.path.join(base_dir, config.get("log_file", "news.log"))
+    state_path = safe_join(base_dir, config.get("state_file", "state.json"), "state.json")
+    log_file = safe_join(base_dir, config.get("log_file", "news.log"), "news.log")
 
     if not token or not channel or not feeds:
-        print("config.json is missing telegram_token, telegram_channel, or feeds")
+        print("missing TELEGRAM_TOKEN, TELEGRAM_CHANNEL, or feeds in config.json")
         return 1
 
     exclude_re = re.compile(exclude_pattern, re.IGNORECASE) if exclude_pattern else None
