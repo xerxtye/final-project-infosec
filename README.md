@@ -2,9 +2,17 @@
 
 <img width="1369" height="1060" alt="image" src="https://github.com/user-attachments/assets/981c6061-bf1a-4fa5-8342-97163985530d" />
 
-# Feedback video
+# Faculty Feedback
 
 https://drive.google.com/file/d/1jbkEN6r60cSsTpluPhTRolLRLgm4qdD-/view?usp=sharing
+
+# Demo Video
+
+https://github.com/user-attachments/assets/6e00e70c-99e5-422b-98c0-af2afb04d971
+
+# Pitch Presentation
+
+https://docs.google.com/presentation/d/16DHKjURahBvHJ5gd3iuSS8qlqjPoAwABoxVSy4Tw3ZA/edit?usp=sharing
 
 # Final Project
 
